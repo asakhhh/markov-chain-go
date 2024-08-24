@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"strings"
 )
@@ -21,6 +23,7 @@ func printUsage() {
 
 func printWarning(msg string) {
 	fmt.Printf("\x1b[35mWarning\u001b[0m: " + msg + "\n")
+	fmt.Printf("==========================\n")
 }
 
 func printErrorAndExit(msg string) {
@@ -85,7 +88,7 @@ func main() {
 	argCnt := len(os.Args)
 	wordNum, prefixStart, prefixLength := -1, make([]string, 0), -1
 	ind := 0
-	for ind < len(os.Args) {
+	for ind < argCnt {
 		arg := os.Args[ind]
 		if arg == "-w" {
 			if wordNum != -1 {
@@ -130,7 +133,6 @@ func main() {
 	if (fi.Mode() & os.ModeCharDevice) != 0 {
 		printErrorAndExit("no input text.")
 	}
-
 	inputbytes, _ := io.ReadAll(os.Stdin)
 	text := strings.Fields(string(inputbytes))
 	if len(text) == 0 {
@@ -150,15 +152,51 @@ func main() {
 
 	if prefixLength == -1 {
 		prefixLength = 2
-	} else if prefixLength > len(text) {
-		printErrorAndExit("prefix length exceeds the number of words in text.")
 	} else if prefixLength > 5 {
 		printWarning("prefix length is too large; it is now set to 5.")
 		prefixLength = 5
+	}
+	if prefixLength > len(text) {
+		printErrorAndExit("prefix length exceeds the number of words in text.")
 	}
 
 	if len(prefixStart) == 0 {
 		prefixStart = make([]string, prefixLength)
 		copy(prefixStart, text[:prefixLength])
 	}
+
+	if wordNum < len(prefixStart) {
+		printErrorAndExit("starting prefix exceeds the maximum number of words.")
+	}
+	if prefixLength > len(prefixStart) {
+		printErrorAndExit("prefix length exceeds the starting prefix - can't generate new words.")
+	}
+
+	if len(incorrectArgs) > 0 {
+		printWarning("These args are incorrect and are ignored - " + strings.Join(incorrectArgs, ", "))
+	}
+
+	mp := make(map[string][]string)
+	for i := 0; i+prefixLength < len(text); i++ {
+		pref := strings.Join(text[i:i+prefixLength], "$$")
+		mp[pref] = append(mp[pref], text[i+prefixLength])
+	}
+	last := len(text) - prefixLength
+	lastPref := strings.Join(text[last:last+prefixLength], "$$")
+	mp[lastPref] = append(mp[lastPref], "")
+
+	var buffer bytes.Buffer
+	fmt.Fprintf(&buffer, strings.Join(prefixStart, " "))
+	prefix := prefixStart[len(prefixStart)-prefixLength:]
+	for length := len(prefixStart); length < wordNum; length++ {
+		pool := mp[strings.Join(prefix, "$$")]
+		newWord := pool[rand.Int()%len(pool)]
+		prefix = append(prefix[1:], newWord)
+		if newWord == "" {
+			break
+		}
+		fmt.Fprintf(&buffer, " "+newWord)
+	}
+	buffer.WriteTo(os.Stdout)
+	fmt.Println()
 }
